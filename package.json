@@ -1,0 +1,53 @@
+{
+  "name": "dsh-afterburn",
+  "version": "0.1.0",
+  "description": "Faster session switching, directory browsing and file previews for DeepSeek Harness.",
+  "type": "module",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-api-session-controller",
+        "@deepseek-ai/dsh-client-resources",
+        "@deepseek-ai/dsh-client-ui-sidebar-documentpreview"
+      ]
+    }
+  },
+  "dependencies": {
+    "chokidar": "5.0.0",
+    "@deepseek-ai/schemastery": "3.19.0"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "watch-service.js",
+    "watch-worker.js",
+    "cordis.patch.yml"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/qso/dsh-afterburn.git"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22.19.0",
+    "dsh": ">=0.2.2-rc.5 <0.3.0-0"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "desktop-plugin"
+  ]
+}
