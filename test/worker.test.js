@@ -7,7 +7,7 @@ import {Worker} from 'node:worker_threads';
 import {once} from 'node:events';
 
 test('a newly created child is reported while sharing a directory observer', {timeout:8000}, async () => {
-  const root = await mkdtemp(join(tmpdir(),'afterburn-test-'));
+  const root = await mkdtemp(join(tmpdir(),'dsh-preview-test-'));
   const worker = new Worker(new URL('../watch-worker.js',import.meta.url),
     {workerData:{pollMs:200,binaryPollMs:200,idleWatchMs:0}});
   async function until(kind, id) {

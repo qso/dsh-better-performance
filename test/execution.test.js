@@ -41,15 +41,19 @@ test('concurrent task watchers stay native while the preview iterator is active'
     async watch(){calls++;return async()=>{};}
   }
   const fs=new LocalFileSystem(),dir=await mkdtemp(join(tmpdir(),'dsh-watch-'));
-  const files={async *changes(){const done=await fs.watch(dir,()=>{},new AbortController().signal);
+  const controller = new AbortController();
+  const files={async *changes(){const done=await fs.watch(dir,()=>{},controller.signal);
     try{yield {kind:'ready'};}finally{await done();}}};
   const native=files.changes,stop=localWatch({fs,workspaceFiles:files},{pollMs:200,binaryPollMs:200,idleWatchMs:0});
+  // The desktop host keeps an event loop running. A standalone Node process
+  // needs a live deadline while it waits for the unreferenced preview worker.
+  const deadline = setTimeout(() => controller.abort(new Error('Preview watcher did not become ready')), 8000);
   try{
     const stream=files.changes();
     assert.equal((await stream.next()).value.kind,'ready');
     assert.equal(calls,0);
     await fs.watch(dir,()=>{},new AbortController().signal);assert.equal(calls,1);
     await stream.return();
-  }finally{await stop();await rm(dir,{recursive:true,force:true});}
+  }finally{clearTimeout(deadline);await stop();await rm(dir,{recursive:true,force:true});}
   assert.equal(files.changes,native);
 });
