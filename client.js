@@ -1,5 +1,5 @@
 window.__ModuleLoader__.load({
-  id: 'dsh-afterburn',
+  id: 'dsh-better-performance',
   factory(require) {
     const React = require('react');
     const mediaTypes = {
@@ -32,7 +32,7 @@ window.__ModuleLoader__.load({
           if (failed.has(id)) continue;
           let item = held.get(id);
           if (!item) {
-            const ref = ctx.sessions.retain(id, { source: 'afterburnRecent' });
+            const ref = ctx.sessions.retain(id, { source: 'betterPerformanceRecent' });
             item = { ref, last: Date.now() };
             ref.ready.catch(() => {
               if (held.get(id)?.ref === ref) { failed.add(id); drop(id); }
@@ -106,10 +106,9 @@ window.__ModuleLoader__.load({
     // the same file and method through the native gateway on every logical open.
     // Range reads, policy failures, version changes and unknown wire shapes
     // stay with the original transport. Nothing leaves the desktop origin.
-    function fastBytes(original, receiver, channel, endpoint, payload, signal) {
+    function fastBytes(original, receiver, channel, endpoint, payload, signal, cap) {
       const native = () => original.call(receiver, channel, endpoint, payload, signal);
       const args = payload?.args;
-      const cap = window.__DSH_AFTERBURN_PREVIEW_BYTES__;
       if (!Number.isSafeInteger(cap) || !args?.options || Object.keys(args.options).length ||
           typeof args.path !== 'string' || !/\.(png|jpe?g|webp|gif|mp4|mov|m4v|webm|wav|mp3|m4a|flac)$/i.test(args.path))
         return native();
@@ -136,7 +135,7 @@ window.__ModuleLoader__.load({
       })();
     }
 
-    function fileIntent(ctx, enableIntent) {
+    function fileIntent(ctx, enableIntent, cap) {
       const lifetime = new AbortController();
       const rpc = ctx.connection.rpc;
       let pin, timer, hover, reader;
@@ -172,7 +171,7 @@ window.__ModuleLoader__.load({
         if (reader?.address === file.address) return;
         releaseReader();
         const ext = file.path.split('.').pop().toLowerCase();
-        if (Object.hasOwn(mediaTypes, ext) && document.documentElement.dataset.dshDockline) return;
+        if (Object.hasOwn(mediaTypes, ext) && document.documentElement.dataset.dshSplitSidebar) return;
         const bytes = /^(png|jpe?g|webp|gif|bmp|ico|pdf)$/.test(ext) || Object.hasOwn(mediaTypes, ext);
         const text = /^(txt|md|json|ya?ml|csv|log|js|ts|tsx|jsx|py|css|sh)$/.test(ext);
         if (!bytes && !text) return;
@@ -211,7 +210,7 @@ window.__ModuleLoader__.load({
         if (channel !== '/api' || !['workspaceFiles/read','workspaceFiles/readBytes'].includes(endpoint))
           return original.call(this, channel, endpoint, payload, signal);
         const run = () => endpoint === 'workspaceFiles/readBytes'
-          ? fastBytes(original, this, channel, endpoint, payload, signal)
+          ? fastBytes(original, this, channel, endpoint, payload, signal, cap)
           : original.call(this, channel, endpoint, payload, signal);
         const job = reader;
         if (!job || job.adopted) return run();
@@ -255,21 +254,36 @@ window.__ModuleLoader__.load({
       });
     }
 
-    function apply(ctx) {
-      const prefs = window.__DSH_AFTERBURN_CONFIG__ ?? {maxSessions:3, retainMinutes:5, earlyDirectoryReads:true, previewIntent:true};
-      if (prefs.maxSessions) ctx.effect(() => retainRecent(ctx, prefs), 'afterburn: recent sessions');
-      if (prefs.earlyDirectoryReads) ctx.effect(() => startDirectoryReads(ctx), 'afterburn: early directory listing');
-      ctx.effect(() => fileIntent(ctx, prefs.previewIntent), 'afterburn: file preview intent');
+    async function apply(ctx) {
+      let prefs = window.__DSH_BETTER_PERFORMANCE_CONFIG__;
+      if (typeof window.fetch === 'function') {
+        const lifetime = new AbortController();
+        ctx.effect(()=>()=>lifetime.abort(),'better-performance: load settings');
+        try {
+          const response = await fetch(new URL('api/better-performance-config',document.baseURI),
+            {signal:lifetime.signal,credentials:'same-origin',redirect:'error'});
+          if (response.ok) prefs = await response.json();
+        } catch {}
+        if (lifetime.signal.aborted) return;
+      }
+      prefs ??= {maxSessions:3,retainMinutes:5,earlyDirectoryReads:true,previewIntent:true};
+      if (prefs.maxSessions) ctx.effect(() => retainRecent(ctx, prefs), 'better-performance: recent sessions');
+      if (prefs.earlyDirectoryReads) ctx.effect(() => startDirectoryReads(ctx), 'better-performance: early directory listing');
+      ctx.effect(() => fileIntent(ctx, prefs.previewIntent, prefs.previewBytes), 'better-performance: file preview intent');
       ctx.effect(() => {
-        document.documentElement.dataset.dshAfterburn = '0.1.0';
-        return () => { delete document.documentElement.dataset.dshAfterburn; };
-      }, 'afterburn: installed version');
-      const id = 'dsh-afterburn/media';
+        document.documentElement.dataset.dshBetterPerformance = '0.2.0';
+        document.documentElement.dataset.dshBetterPerformanceWorker = String(prefs.watchWorker === true);
+        return () => {
+          delete document.documentElement.dataset.dshBetterPerformance;
+          delete document.documentElement.dataset.dshBetterPerformanceWorker;
+        };
+      }, 'better-performance: installed version');
+      const id = 'dsh-better-performance/media';
       const extensions = Object.keys(mediaTypes);
       ctx.effect(() => ctx.documentPreviews.register({id, extensions, binaryExtensions:extensions,
-        priority:'builtin', title:() => '媒体播放器', loading:'bytes-complete'}), 'afterburn: media preview');
+        priority:'builtin', title:() => '媒体播放器', loading:'bytes-complete'}), 'better-performance: media preview');
       ctx.effect(() => ctx.slots.inject('sidebar.right.tab.document', () => ctx.slots.register(
-        { name:'sidebar.right.tab.document', key:id }, MediaBody)), 'afterburn: media player');
+        { name:'sidebar.right.tab.document', key:id }, MediaBody)), 'better-performance: media player');
     }
     return { inject:['sessions','remote','remote.workspaceFiles','connection','resources','documentPreviews','slots'], apply };
   }

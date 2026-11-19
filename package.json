@@ -1,6 +1,6 @@
 {
-  "name": "dsh-afterburn",
-  "version": "0.1.0",
+  "name": "dsh-better-performance",
+  "version": "0.2.0",
   "description": "Faster session switching, directory browsing and file previews for DeepSeek Harness.",
   "type": "module",
   "main": "./index.js",
@@ -36,7 +36,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/qso/dsh-afterburn.git"
+    "url": "git+https://github.com/qso/dsh-better-performance.git"
   },
   "scripts": {
     "test": "node --test"

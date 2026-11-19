@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { Worker } from 'node:worker_threads';
 import { dirname, resolve } from 'node:path';
 
@@ -10,6 +11,26 @@ export function localWatch(ctx, settings) {
   while (owner && !Object.hasOwn(owner, 'watch')) owner = Object.getPrototypeOf(owner);
   if (owner?.constructor?.name !== 'LocalFileSystem') return;
   const original = owner.watch;
+  const files = ctx.workspaceFiles;
+  const nativeChanges = files.changes;
+  const changesDescriptor = Object.getOwnPropertyDescriptor(files, 'changes');
+  const watchDescriptor = Object.getOwnPropertyDescriptor(fs, 'watch');
+  if (typeof nativeChanges !== 'function' || changesDescriptor?.configurable === false || watchDescriptor?.configurable === false) return;
+  const preview = new AsyncLocalStorage();
+  // A preview feed is lazy: its watch starts during iterator.next(), after
+  // changes() has returned. Scope each advance, never the caller's work.
+  async function* changes(...args) {
+    const source = preview.run(true, () => nativeChanges.apply(this,args)[Symbol.asyncIterator]());
+    try {
+      for (;;) {
+        const frame = await preview.run(true, () => source.next());
+        if (frame.done) return frame.value;
+        yield frame.value;
+      }
+    } finally {
+      if (source.return) await preview.run(true, () => source.return());
+    }
+  }
   const worker = new Worker(new URL('./watch-worker.js', import.meta.url), {execArgv:[], workerData:settings});
   const subscribers = new Map();
   let nextId = 0, disabled = false, disposed = false;
@@ -29,7 +50,7 @@ export function localWatch(ctx, settings) {
   });
   worker.unref();
   async function watch(target, changed, signal) {
-    if (disabled) return original.call(this, target, changed, signal);
+    if (disabled || !preview.getStore()) return original.call(this, target, changed, signal);
     signal.throwIfAborted();
     const path = resolve(this.processPath(target));
     const directory = (await this.stat(target, signal))?.type === 'directory';
@@ -59,10 +80,19 @@ export function localWatch(ctx, settings) {
       return original.call(this, target, changed, signal);
     }
   }
+  Object.defineProperty(files, 'changes', {value:changes, configurable:true, writable:true});
   Object.defineProperty(fs, 'watch', {value:watch, configurable:true, writable:true});
   return () => {
     disposed = true;
-    if (Object.getOwnPropertyDescriptor(fs, 'watch')?.value === watch) Reflect.deleteProperty(fs, 'watch');
+    if (Object.getOwnPropertyDescriptor(files, 'changes')?.value === changes) {
+      if (changesDescriptor) Object.defineProperty(files, 'changes', changesDescriptor);
+      else Reflect.deleteProperty(files, 'changes');
+    }
+    if (Object.getOwnPropertyDescriptor(fs, 'watch')?.value === watch) {
+      if (watchDescriptor) Object.defineProperty(fs, 'watch', watchDescriptor);
+      else Reflect.deleteProperty(fs, 'watch');
+    }
+    preview.disable();
     fail(new Error('File observation plugin unloaded'));
     return worker.terminate().then(() => {});
   };

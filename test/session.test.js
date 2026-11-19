@@ -6,7 +6,7 @@ import {readFile} from 'node:fs/promises';
 test('a quick return reuses the retained session and unload releases every reference',async () => {
   let mod,update,cleanup,ids=['a','b','c'],active='a';
   const counts=new Map(),held=new Set();
-  const window={__ModuleLoader__:{load(x){mod=x.factory(()=>({}));}},__DSH_AFTERBURN_CONFIG__:{
+  const window={__ModuleLoader__:{load(x){mod=x.factory(()=>({}));}},__DSH_BETTER_PERFORMANCE_CONFIG__:{watchWorker:false,
     maxSessions:2,retainMinutes:5,earlyDirectoryReads:false,previewIntent:false}};
   const source=await readFile(new URL('../client.js',import.meta.url),'utf8');
   vm.runInNewContext(source,{window,queueMicrotask,setInterval,clearInterval});

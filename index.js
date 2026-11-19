@@ -12,7 +12,7 @@ export const Config = z.object({
 });
 // Expose only the configured display limits to this desktop's browser module.
 import { localWatch } from './watch-service.js';
-export const inject = ['fs', 'workspaceFiles', 'attachments'];
+export const inject = ['fs', 'workspaceFiles', 'attachments', 'connection'];
 export function apply(ctx, options = {}) {
   const integer = (key, fallback, min, max) => Number.isInteger(options[key])
     ? Math.min(max, Math.max(min, options[key])) : fallback;
@@ -31,13 +31,18 @@ export function apply(ctx, options = {}) {
     const stop = options.macWatch !== false && localWatch(ctx, settings);
     active = Boolean(stop);
     return stop || undefined;
-  }, 'afterburn: isolated macOS filesystem observer');
-  ctx.on('webserver/index-inject', table => {
-    table.push({kind:'global',name:'__DSH_AFTERBURN_CONFIG__',value:settings});
-    table.push({kind:'global',name:'__DSH_AFTERBURN_WATCH_WORKER__',value:active});
+  }, 'better-performance: isolated macOS filesystem observer');
+  function clientSettings() {
     const fileCap = ctx.workspaceFiles.config?.maxFileBytes;
     const mediaCap = ctx.attachments.imageLimits?.maxImageBytes;
-    if (!settings.fastBytes || !Number.isSafeInteger(fileCap) || !Number.isSafeInteger(mediaCap)) return;
-    table.push({ kind: 'global', name: '__DSH_AFTERBURN_PREVIEW_BYTES__', value: Math.min(fileCap, mediaCap) });
+    const previewBytes = settings.fastBytes && Number.isSafeInteger(fileCap) && Number.isSafeInteger(mediaCap)
+      ? Math.min(fileCap, mediaCap) : null;
+    return {...settings,watchWorker:active,previewBytes};
+  }
+  ctx.on('webserver/index-inject', table => {
+    table.push({kind:'global',name:'__DSH_BETTER_PERFORMANCE_CONFIG__',value:clientSettings()});
   });
+  // Desktop can enable a plugin without rebuilding its boot-time globals.
+  ctx.effect(()=>ctx.connection.fetch.register({path:'/api/better-performance-config',methods:['GET'],requestBody:'buffered',
+    fetch:()=>Response.json(clientSettings(),{headers:{'Cache-Control':'no-store'}})}),'better-performance: desktop settings');
 }

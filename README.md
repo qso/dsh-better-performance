@@ -1,36 +1,50 @@
-# DSH Afterburn
+# DSH Better Performance
 
-A desktop performance plugin for DeepSeek Harness. Keep recently visited sessions ready, start folder listings immediately, and reduce the time spent waiting for file previews. Tested with DSH Desktop 0.2.2-rc.5 on macOS.
+**少等一会儿，接着做事。** 在两个长会话之间核对上下文，切回来就能继续读。在文件树里挑大图，点开就能更早看到画面。一次 macOS 桌面实测中，12.6 MB PNG 的首次预览从 **308 ms 降到 127 ms**，等待时间减少 **59%**。
 
-## 安装
+可以继续使用已有长会话，也可以让工具返回完整输出。插件通过复用最近的会话、并行读取目录和改进文件预览传输来提速，完整历史仍由 DSH 保存。
 
-在 DSH 插件管理器中通过 GitHub 安装 `github:qso/dsh-afterburn#v0.1.0`，启用后重启 DSH。也可克隆本仓库，运行 `npm ci --ignore-scripts` 后在本地插件安装入口选择仓库目录。可单独使用，也可搭配 [DSH Dockline](https://github.com/qso/dsh-dockline)。
+## 同一台机器上，开与关差多少？
 
-## 工作方式
+DSH Desktop 0.2.2-rc.5，macOS，同一工作区，DSH Split Sidebar 两组都启用。以下为 0.2.0 的一次开关对照，单位为毫秒，表中列出中位数。
 
-- 默认最多保留 3 个最近使用的会话，离开 5 分钟后释放。会话越大，保留期间占用的内存越多。首次打开仍需载入历史。
-- 首次打开目录时并行开始读取和建立监听，监听就绪后再核对目录。macOS 本地文件系统在独立线程观察当前正在浏览的目录，避免切换会话时监听器的关闭阻塞宿主。
-- 点击文件即开始准备预览，同一次打开复用进行中的读取。较大的图片等二进制文件通过 DSH 自带的同源、带版本的媒体地址传输，同时遵守宿主读取上限。预览继续使用宿主的文件权限。
-- 配置与观察仅作用于当前 DSH。数据通过当前 DSH 连接传输。本插件没有分析服务、远程资源或自己的文件持久缓存。
+| 日常操作 | 关闭插件 | 开启插件 | 结果 |
+| --- | ---: | ---: | --- |
+| 点击一张 12.6 MB PNG，直到图片解码可见 | 308 | **127** | 少等 181 ms，约 59% |
+| 两个长会话来回切，到目标正文出现 | 116.5 | **105** | 少等 11.5 ms，约 10% |
+| 首次展开 160 项目录，到子项出现 | 47 | **47** | 本轮持平 |
 
-## 配置
+每组先打开两个会话预热，再交替点击 12 次。会话计时从点击到目标会话正文进入页面并跨过一个动画帧。目录与图片每组各测 3 次，使用三个之前未打开的目录和不同路径下的同一张图。这里的首次指 DSH 首次打开该路径。操作系统文件缓存、会话大小和预览格式都会影响结果，首次启动 DSH 的耗时另计。
 
-在 DSH 的插件配置中调整以下选项。也可以在配置该插件的 Cordis 条目上设置同名的 `config` 值，重启后生效。
+## 哪些等待被省掉了？
+
+- **切回来时，最近会话仍在。** 默认保留最近 3 个会话的前端引用，离开 5 分钟后释放。可以用内存换取更流畅的切换，也可以调小数量。
+- **第一次展开目录时就开始读。** 原生文件监听建立的同时先列目录，监听就绪后校对变化。macOS 上，工作区预览的文件监听由独立线程执行，减少会话快速切换时监听器关闭阻塞宿主的机会。
+- **大图预览少搬一次数据。** 点击文件时准备预览，同一次打开可复用正在进行的读取。符合大小条件的完整二进制预览走 DSH 已鉴权、带版本的同源媒体通道，读取权限和大小上限沿用宿主。
+
+## 工具结果与任务执行
+
+保留和释放的是界面的会话引用。插件不压缩或摘要工具输出，不向命令追加 `head` 或 `tail`，也不改模型输入、任务提示词或历史记录。文件观察加速限定在工作区预览的变更订阅中，其他文件观察交还原生实现。预览以外的 RPC 保留原参数、返回值、异常和取消信号。
+
+仓库中有超过 400 KB 的合成工具输出回归测试。它验证任务调用透传，也验证预览监听活跃时并发任务仍走原生观察器。DSH 自身的模型上下文窗口和历史分页继续适用。
+
+## 安装与设置
+
+在 DSH 插件管理器里通过 GitHub 安装 `github:qso/dsh-better-performance#v0.2.0` 并启用。本地开发可克隆仓库、运行 `npm ci --ignore-scripts`，然后选择该目录安装。原名为 DSH Afterburn，升级时请用新包替换旧包。插件可以独立使用，也可以配合 [DSH Split Sidebar](https://github.com/qso/dsh-split-sidebar)。
 
 | 选项 | 默认值 | 用途 |
 | --- | --- | --- |
-| `maxSessions` | 3 | 最近保留会话数，0 关闭，最多 8 |
-| `retainMinutes` | 5 | 退出前台后的保留分钟数，1–30，每 30 秒清理 |
-| `macWatch` | true | macOS 本地文件观察线程 |
-| `pollMs` | 500 | 普通文件变化检查间隔，200–5000 毫秒 |
-| `binaryPollMs` | 1000 | 二进制文件检查间隔，200–10000 毫秒 |
-| `idleWatchMs` | 1500 | 闲置监听复用时间，0–10000 毫秒，最多留 8 个 |
-| `earlyDirectoryReads` | true | 首次展开时提前读取目录 |
-| `previewIntent` | true | 指针或键盘选中文件时预备读取 |
-| `fastBytes` | true | 对允许的完整读取使用宿主媒体传输 |
+| `maxSessions` | 3 | 最近会话数，0 关闭，最多 8 |
+| `retainMinutes` | 5 | 离开前台后的保留分钟数，每 30 秒清理 |
+| `macWatch` | true | 在 macOS 上隔离预览文件监听 |
+| `pollMs` / `binaryPollMs` | 500 / 1000 | 普通与二进制文件的变化检查间隔，单位毫秒 |
+| `idleWatchMs` | 1500 | 闲置监听可复用的时间，最多留 8 个 |
+| `earlyDirectoryReads` | true | 提前开始首次目录读取 |
+| `previewIntent` | true | 指针或键盘选择文件时准备预览 |
+| `fastBytes` | true | 对符合条件的完整读取使用宿主媒体通道 |
 
-如果希望更快看到其他程序修改的内容，可以缩短检查间隔。目录特别大或电池供电时可以延长间隔。禁用插件并重启即可恢复宿主默认行为。DSH 更新可能改变会话、观察及预览接口，升级后请复测。
+在插件配置中设置这些选项。本插件通过当前 DSH 连接传输数据，没有遥测或额外的持久文件缓存。禁用插件即可回到宿主的默认行为。
 
-## Development
+## 开发
 
-Use Node.js 22.19 or later. Run `npm ci --ignore-scripts`, `npm test`, and `npm pack --dry-run`. The worker test creates a new file in a temporary directory. The session test covers switching back to a retained session and cleanup. MIT licensed.
+使用 Node.js 22.19 或更高版本。运行 `npm ci --ignore-scripts`、`npm test` 和 `npm pack --dry-run`。MIT 许可证。
